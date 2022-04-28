@@ -1,8 +1,6 @@
-# The Selection of Proffensional Athletes
+# The Systolic Blood Pressure Reading
 
-This repository contains information on data of NBA players selected in drafts with analysis on the trends seen throughout this data.
-
-We see many young kids devote their lives to the sport of their passion. The chance of making it to the big screens and the big arenas is slim. However, have you ever wondered how many players there may be out there that could have had a better shot than some of the players that are currently playing. We are interested in analyzing what makes the players that were selected and have played lengthy careers different from those who have not. Is it a physical trend that is clearly evident, or are the physcial attributes similar leading us to believe that there are some underlying differences between these players.
+This repository contains information on individuals health and examination records. Model created to attempt prediction of blood pressure using these records. Analysis is meant to provide insight on what characteristics affect blood pressure the most and how early should we begin conversing about this condition given patients meet certain conditions.
 
 Formatted as such:
 Inputs - This folder will contain the dataset that has been used for this repository. This will be final cleaned datasets
