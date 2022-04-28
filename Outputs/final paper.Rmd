@@ -1,0 +1,328 @@
+---
+title: "Predicting Systolic Blood Pressure"
+author: "Ensar Pajtesa"
+date: "27/04/2022"
+output: pdf_document
+bibliography: references.bib
+toc: true
+abstract: Each time you visited the doctor as a kid and even as an adult, one of the first things measured is blood pressure. This is an indicator of overall cardiovascular conditions and health. We are interested in using other characteristics of individuals and run a regression model to predict the blood pressure reading. This will give us information on the characteristics that affect the rate of blood pressure and how this can be foreseen or treated.
+thanks: "Code and data can be found at: https://github.com/ensarpajtesa1/bloodpressure"
+---
+
+\pagebreak
+
+# Introduction
+
+In the medical field, statistical analysis is imperative. Although every patient's condition differs slightly from the next, there is a general consensus among the things that are detrimental to our health and the rate at which they are affecting us is very important to study and analyze. As per a report conducted by Medical News Today the number one cause of death worldwide in 2020 was not cancer, not accidents, not even COVID-19. The number one cause of death is cardiovascular disease [@Cronkleton:2022]. Cardiovascular disease however is a broad term and relates to many different conditions had by people. Systolic blood pressure measures the force the heart exerts on the arteries each time it pumps [@Mayo:2022]. High or low blood pressure can lead to a number of problems and most notably due to the thickening of the arteries to be able to withstand the force, this condition sometimes in combination with cholesterol leads to higher risk of heart attacks and strokes [@Sinai:2022]  
+
+Our hearts are the beat that keeps us alive. It is important to assess heart health and be proactive on measures. In this analysis our attempt is to create a model that best predicts systolic blood pressures of patients, this is important because with these measurements it can be possible to detect early signs of regressing cardiovascular health.
+
+# Data
+
+For this analysis we are using `R` [@Team:2020wf], `tidyverse` [@Wickham:2019vq] and `dplyr` [@Wickham:2021vf] functions. For the creation of figures and tables we will use `ggplot2` [@Wickham:2016tn], `kableextra` [@Zhu:2020vy] and `reshape2` [@Wickham:2007tu]. The package `knitr` [@Xie:2021vq] is used to generate the R markdown report. 
+
+```{r setup, include=FALSE}
+library(dplyr)
+library(tidyverse)
+library(NHANES)
+library(Hmisc)
+library(car)
+library(psych)
+library(caret)
+library(lattice)
+library(kableExtra)
+library(ggplot2)
+
+small.nhanes = read.csv("/Users/ensarpajtesa/Desktop/STA304/Final Paper/Inputs/dataset.csv")
+
+```
+
+The data used for this analysis was extracted from the 2011-2012 NHANES dataset (@Disease-Control:2011wy). NHANES is the acronyms for Natural Health and Nutrition Examination Survey. This is conducted yearly in the United States and among other information collects data from the general physical attributes and mental/lifestyle attributes from those involved in the Survey. The NHANES dataset features over 70 variables, however for this analysis we have extracted some relevant variables which are believed to have something to do with the Systolic Blood Pressure reading. Working with minimized set of variables allows us to better assess our Exploratory Data Analysis. 
+
+We further clean the data removing further variables based on their relationship with others in an attempt to remove redundancy and/or variables that are obvious to have a strong correlation to one another.  
+- An example of this is BMI, this is heavily correlated to weight and height as this is what is used in its calculation. We can use BMI instead of Weight and Height and cover this category while remaining a simpler model  
+- Another example used of this is Income and Poverty, the poverty level uses the income of the household against the benchmark and produces a numerical value. This can be used instead of income as the redundancy and correlation is clear.  
+
+The variables that remain are the ones we will use to start this analysis, below is a description of each one, categorical or numerical and what the outputs could be in each variable:
+
+- Gender (Categorical): Gender (sex) of study participant as male or female
+- Age (Numerical): Age in years at screening of study participant. Subjects 80 years or older were recorded as 80.
+- Race3 (Categorical): Reported race of study participant: Mexican, Hispanic, White, Black, Asian, or Other. 
+- Poverty (Numerical): A ratio of family income to poverty guidelines. Smaller numbers indicate more poverty
+- BMI (Numerical): Body mass index (weight/height2 in kg/m2). Reported for participants aged 2 years or older.
+- BPSysAve (Desired Outcome Variable): Combined systolic blood pressure reading.
+- DirectChol (Numerical): Direct HDL cholesterol in mmol/L. Reported for participants aged 6 years or older.
+- Depressed (Categorical): Self-reported number of days where participant felt down, depressed or hopeless. Reported for participants aged 18 years or older. One of None, Several,    Majority (more than half the days), or Almost All.
+- SleepHrsNight (Numerical): Self-reported number of hours study participant usually gets at night on weekdays or workdays. Reported for participants aged 16 years and older.
+- PhysActive (Categorical): Participant does moderate or vigorous-intensity sports, fitness or recreational activities (Yes or No). Reported for participants 12 years or older.
+- SmokeNow (Categorical): Study participant currently smokes cigarettes regularly. Reported for participants aged 20 years or older as Yes or No
+
+Figure 1 displays a density histogram of our outcome variable which is systolic blood pressure. It is important to assess a distribution of this model. We see that the bulk of our data lies between 80 an 160 reading which is quite a large range. Distribution is skewed to the left as is expected because more people tend to be within normal ranges with some people who have abnormally high blood pressure skewing the distribution.
+
+```{r, echo=FALSE}
+ggplot(small.nhanes, aes(x=BPSysAve)) + 
+ geom_histogram(aes(y=..density..), colour="red", fill="light pink", binwidth = 2)+
+ geom_density(alpha=.2, fill="blue") +
+  theme_bw()+
+  labs(x = "Systolic Blood Pressure Reading", y = "Density", title = "Overall Systolic Blood Pressure Readings", caption = "*Figure 1")
+```
+
+# Model
+
+We are going to work through and create a linear regression model that in the end provides us with coefficients that we hope will allow us to predict the blood pressures to some degree of significance. We must first ensure that all steps and assumptions or linear regression are met and hold.
+
+This linear regression was done as a backward elimination method where we selected all variables in the data set first and then used linear regression assumptions and model diagnostics to remove one variable at a time until the model does not get any better or gets worse. 
+
+In order to validate our model and ensure reproducibility it is important that we subset the data into a train and test dataset and specify a seed for these samples. We will fit our model into the train data set and then use the model created to validate on the test set.
+
+## Assessing Linear Regression Assumptions and Variable Preparation:
+
+### Normality of Residuals and Independence of Predictors:
+
+We run a pairwise function of all the variables to see how our variables are distributed and in general what the makeup of our predictors will be. On the main diagonal displays distributions of the variables, to the right the entire triangle calculates correlation between the perpendicular variables and the correlations plots of the perpendicular variables fill the bottom right of these graphs. Our main points of focus when doing this is assessing our linear regression assumptions. 2 main assumptions can be seen from this pairwise function, Normality of Residuals and Independence of Residuals. As foreseen due to the selection that we made and described above there is little correlation between our predictor variables. However for numerical values there are some variables which have skewed distributions and we will try to fix this using methods such as log and square root and applying this to the data column in its entirety.
+
+
+```{r,echo= FALSE, fig.height=5}
+
+pairs.panels(small.nhanes, col="red")
+```
+
+\pagebreak
+
+After these we run the pairwise function again and have the following results, Blood Pressure, BMI, Cholesterol all now have adequate normal distributions allowing all of our numerical variables to satisfy this regression assumption except for one of them. That is Poverty rate, this variable did not respond to any manipulation techniques and therefore will be left as is. This will be discussed in a model limitation portion of this report.
+
+```{r,echo= FALSE, fig.height=5}
+
+# Variable manipulation to satisfy normality assumption
+small.nhanes$BMI <- log10(small.nhanes$BMI)
+small.nhanes$BPSysAve <- log10(small.nhanes$BPSysAve)
+small.nhanes$DirectChol <- log10(small.nhanes$DirectChol)
+
+# Check in manipulation worked
+
+pairs.panels(small.nhanes, col="red")
+```
+
+```{r,include= FALSE}
+# Train and Test Data Samples
+set.seed(1003368410)
+train <- small.nhanes[sample(seq_len(nrow(small.nhanes)), size = 500),]
+test <- small.nhanes[!small.nhanes$ID %in% train$ID,]
+
+```
+
+\pagebreak
+
+## Assumption of Linearity and Constant Variance
+
+We display in the graphs below of all the predictors the residuals in relation to our blood pressure reading and we see that the pink line in all numerical variables closely follows the dotted regression line. Assumptions of linearity and constant variance hold.
+
+```{r, include= FALSE, fig.height=5}
+# First model with all variables
+model <- lm(BPSysAve~Gender + Age + Race3 + Poverty + BMI + Depressed + SleepHrsNight + PhysActive + SmokeNow + DirectChol, data=train)
+
+summary(model)
+```
+
+```{r, echo = FALSE, fig.height=5}
+# Model plots with line displaying linearity and constant variance
+crPlots(model)
+
+```
+
+\pagebreak
+
+## Extreme Values
+
+It is important that we attempt to find data points in our set that may be unnecessarily skewing our regression line  
+To do this we use the Cooks Distance which find the data points influence on the fitted response values. The cutoff for Cook’s distance is set to 4 times. We run the Cook’s distance multiple times and we remove the 3 most influential points from the data that are severely outside our cutoff. Our goal is to ensure that our model gets better when assessing the diagnostics that are discussed above.  We do not want to remove too many variables and run the risk of over-fitting our model to this specific training data set.     
+The final cooks distance chart looks as below and the values do not show any extremities in our regression set.  
+
+```{r, include = FALSE}
+# Cook's Distance used to assess extreme values at a cutoff of 4(n-k-1)
+
+cutoff <- 4/((nrow(train)-length(model$coefficients)-2))
+plot(model, which=4, cook.levels=cutoff)                       
+plot(model, which=5, cook.levels=cutoff)
+train <- train[-which(rownames(train)   
+   %in% c("121", "102", "524")),] 
+
+model <- lm(BPSysAve~Gender + Age + Race3 + Poverty + BMI + Depressed + SleepHrsNight + PhysActive + SmokeNow + DirectChol, data=train)
+summary(model)
+
+cutoff <- 4/((nrow(train)-length(model$coefficients)-2))
+plot(model, which=4, cook.levels=cutoff)                       
+plot(model, which=5, cook.levels=cutoff)
+train <- train[-which(rownames(train)    
+   %in% c("425", "37", "197")),]
+
+model <- lm(BPSysAve~Gender + Age + Race3 + Poverty + BMI + Depressed + SleepHrsNight + PhysActive + SmokeNow + DirectChol, data=train)
+summary(model)
+```
+
+```{r, echo = FALSE}
+
+cutoff <- 4/((nrow(train)-length(model$coefficients)-2)) 
+plot(model, which=4, cook.levels=cutoff)                      
+plot(model, which=5, cook.levels=cutoff)
+```
+
+\pagebreak
+
+## Multicollinearity
+
+We use the VIF function which is a measure of how easy one variable can be predicted using the other predictor variables. Since some of the variables in our regression are categorical variables there are different degrees of freedom and our GVIF takes into account all degrees of freedom. Any VIF value above 5 must be examined. However we see in our model that all GVIF values are well below this mark. We can proceed assuming no multicollinearity
+
+```{r, include = FALSE}
+
+vif(model)
+
+summary(model)
+
+```
+
+```{r, echo = FALSE}
+
+variable.name <- c('Gender', 'Age', 'Race', 'Poverty', 'BMI', 'Depressed', 'Hours Slept at Night', 'Physically Active', 'Smoker', 'Direct Cholesterol')     
+gvif.value <- c(1.080, 1.133, 1.019, 1.109, 1.122, 1.030, 1.035, 1.105, 1.144, 1.621)
+
+gvif.data <- data.frame(variable.name, gvif.value)
+
+knitr::kable(
+  gvif.data,
+  col.names = c('Predictor Variable', 'GVIF Value'),
+  caption = "Multicollinearity of Predictors"
+)  %>%
+  kable_styling()
+
+
+```
+
+\pagebreak
+
+# Results
+
+Throughout the analysis of our model, the diagnostic tests used to assess whether the model is improving or regressing are Adjusted R-Squared which displays the percentage of the residuals that the model explains and the P-Values of both the model and the predictors. These p-values test the null hypothesis that states that there is no correlation. A low p-value shows that we reject the null as it is shown that there exists a correlation.
+
+## Final Model
+
+To obtain our final model we remove variables one at a time based on the highest p-value until we see the model not improving in terms of Adjusted R-Squared and if the model begins to perform worse we then stop the elimination
+
+Our final model summary is below:
+
+```{r, include= FALSE}
+
+model <- lm(BPSysAve~Gender + Age + Race3 + Poverty + BMI + SleepHrsNight + PhysActive + SmokeNow + DirectChol, data=train)
+summary(model)
+
+model <- lm(BPSysAve~Gender + Age + Race3 + Poverty + BMI + SleepHrsNight+ SmokeNow + DirectChol, data=train)
+summary(model)
+
+model <- lm(BPSysAve~Gender + Age + Race3 + Poverty + BMI + SleepHrsNight + DirectChol, data=train)
+summary(model)
+
+# this is the best performing model
+
+model <- lm(BPSysAve~Gender + Age + Race3 + Poverty + BMI + DirectChol, data=train)
+summary(model)
+
+# the models below begin to perform worse 
+
+model <- lm(BPSysAve~Gender + Age + Race3 + Poverty + DirectChol , data=train)
+summary(model)
+
+model <- lm(BPSysAve~Gender + Age + Poverty + DirectChol , data=train)
+summary(model)
+
+```
+
+```{r, include = FALSE}
+
+# this is the best performing model
+
+model <- lm(BPSysAve~Gender + Age + Race3 + Poverty + BMI + DirectChol, data=train)
+summary(model)
+plot(model)
+
+```
+
+```{r, echo = FALSE}
+
+statistic.name <- c('Multiple R-Squared', 'Adjusted R-Squared', 'F Test Statistic', 'P-Value')     
+statistic.value <- c(0.2505, 0.235, 16.14, 0.00000000000000022)
+
+model.data <- data.frame(statistic.name, statistic.value)
+
+knitr::kable(
+  model.data,
+  col.names = c('Statical Test', 'Value'),
+  caption = "Overview of Linear Regression Model"
+)  %>%
+  kable_styling()
+
+```
+
+## Interpretation
+
+We have an adjusted R-Squared of 0.233 which means our model is able to explain 23.3% of the residuals in this dataset. All predictor variables have a low P-Value and P-Value of our entire model is extremely low meaning we reject the null and we have reason to believe the model created does have correlation to the Systolic Blood Pressure.
+
+Our interpretation of the model is the coefficients that are produced are made into a formula where the values of the predictors can be plugged in and the systolic blood pressure can predicted to the level of efficiency of Multiple R-Squared.
+
+Linear Regression formula:
+
+$\\ log(Systolic Blood Pressure) = 1.902 + 0.022[Gender (1 if Male, 0 if Female)] + 0.0014[Age] + 0.0282[Race [1 if Black, 0 if not)] + 0.0406[Race (1 if Hispanic, 0 if not)] + 0.0254[Race (1 if Mexican, 0 if not)] + 0.0262[Race (1 if White, 0 if not)) - 0.0163[Race (1 if Other, 0 if not)] - 0.0034[Poverty] + 0.0525[BMI]+ 0.063[Direct Cholesterol(mmol/L)]$
+
+The variables which were log transformed to maintain normality must be displayed in our formula. We plug in values of the predictor variables to get an answer for Systolic Blood Pressure.
+
+\pagebreak
+
+## Validate the Model
+
+In order to properly assess the effectiveness of our model we must run our model on the test dataset we created and see how our prediction works.
+
+```{r, echo = FALSE}
+
+train$Pred.BPSysAve <- predict(model, 
+    newdata = subset(train, select=c(BPSysAve, Gender, Age, Race3, Poverty, BMI, DirectChol)))
+test$Pred.BPSysAve <- predict(model, 
+    newdata = subset(test, select=c(BPSysAve, Gender, Age, Race3, Poverty, BMI, DirectChol)))
+
+
+train.corr <- round(cor(train$Pred.BPSysAve, train$BPSysAve), 2)
+train.RMSE <- round(sqrt(mean((10 ^ train$Pred.BPSysAve - 10 ^ train$BPSysAve)^2)))
+train.MAE <- round(mean(abs(10 ^ train$Pred.BPSysAve - 10 ^ train$BPSysAve)))
+
+# Check how good is the model on the validation set
+test.corr <- round(cor(test$Pred.BPSysAve, test$BPSysAve), 2)
+test.RMSE <- round(sqrt(mean((10 ^ test$Pred.BPSysAve - 10 ^ test$BPSysAve)^2)))
+test.MAE <- round(mean(abs(10 ^ test$Pred.BPSysAve - 10 ^ test$BPSysAve)))
+
+Type_of_Result <- c('R-Squared','Root Mean Square Error', 'Mean Absolute Error')
+Train_set <- c(train.corr^2, train.RMSE, train.MAE)
+Test_set <- c(test.corr^2, test.RMSE, test.MAE)
+
+validate.data <- data.frame(Type_of_Result, Train_set, Test_set)
+
+knitr::kable(
+  validate.data,
+  col.names = c('Type of Result', 'Train Set', 'Test Set'),
+  caption = "Predicting Values of Test Set"
+)  %>%
+  kable_styling()
+```
+
+We see that our correlation squared is slightly lower. Mean squared error and Mean absolute error are slightly higher but given the size of the test data set these are still within reasonable agreeance with eachother.
+
+# Discussion
+
+What can we learn from the analysis? The main drivers in our predictions for systolic blood pressure are age, gender and cholesterol. This is something that could have been inferred prior to beginning as females and males have quite different physiological make-ups as well as age is the single greatest factor on the changing of our bodies. Cholesterol blocks arteries and therefore making it difficult for blood and oxygen to flow through. However what may be less intuitive is the impact that variables such as Race and Poverty. These variables made a difference in our prediction model and some races such as Hispanic have greater impact on our predictions.
+
+More so than in terms of predictions what this model has allowed us to do is create a coefficient to each characteristic of an individual that is significant for Blood Pressure. By knowing the relationship between these variables medical staff can investigate possible future problems earlier on in a patients life and recommend proper preventative course of action.
+
+## Limitations of the Model
+
+As mentioned earlier in the analysis there were some data distributions such as poverty which were not normal and could have violated normality assumptions. Considering a dataset of 708 observations we can consider this a small population metric and therefore data may be skewed or heavily in favor of a certain direction not indicative of the general population. Many statistics were taken on the basis of a reporting system and people who did not report or missed information could have skewed data sets.
+
+\pagebreak
+
+# Works Cited
